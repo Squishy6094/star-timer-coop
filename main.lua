@@ -4,7 +4,7 @@
 local modFs = mod_fs_get() or mod_fs_create()
 
 -- Constants
-local REPLAY_FPS = 5
+local REPLAY_FPS = 3
 local REPLAY_RATE = math.ceil(30/REPLAY_FPS)
 
 
@@ -85,12 +85,11 @@ local function timestamp(frames)
 end
 
 local function save_replay_table(level, star, table)
-    log_to_console("Start Save")
     local replayString = ""
     local prevPos = {x = 0, y = 0, z = 0}
     for i = 0, #table do
         replayString = replayString..tostring(math.floor(table[i].x - prevPos.x)).." "..tostring(math.floor(table[i].y - prevPos.y)).." "..tostring(math.floor(table[i].z - prevPos.z)) .. ","
-        log_to_console(replayString)
+        vec3f_copy(prevPos, table[i])
     end
 
     -- Save Replay
@@ -106,7 +105,6 @@ local function save_replay_table(level, star, table)
 end
 
 local function load_replay_table(level, star)
-    log_to_console("Start Load")
     local filename = "replay-"..tostring(romhack).."-"..tostring(level).."-"..tostring(star)
     local file = modFs:get_file(filename) or modFs:create_file(filename, true)
     file:rewind() -- Reset offset to the beginning of the file
@@ -119,8 +117,8 @@ local function load_replay_table(level, star)
         local pos = string_split(replayString[i], " ")
         if pos ~= nil then
             replayTable[i - 1] = {x = pos[1] + prevPos.x, y = pos[2] + prevPos.y, z = pos[3] + prevPos.z}
+            vec3f_copy(prevPos, replayTable[i - 1])
         end
-        log_to_console(tostring(replayTable[i-1].x) .. ", " .. tostring(replayTable[i-1].y) .. ", " .. tostring(replayTable[i-1].z))
     end
     file:erase(file.size)
     file:set_text_mode(true) -- Set mode to text
@@ -168,7 +166,7 @@ local replay = {}
 local savedPos = {}
 
 local areaTimer = 0
-local areaTimerStop = false
+local areaTimerStop = true
 local areaTimerBest = 0
 local function update()
     local m = gMarioStates[0]
@@ -177,7 +175,6 @@ local function update()
     and (m.action & ACT_GROUP_CUTSCENE == 0 or m.action & ACT_FLAG_ON_POLE ~= 0 or forceTimerActs[m.action])
     and (m.area.camera == nil or m.area.camera.cutscene == 0) then
         if areaTimer%REPLAY_RATE == 0 then
-            djui_chat_message_create("noted"..areaTimer/REPLAY_RATE)
             savedPos[areaTimer/REPLAY_RATE] = {x = m.pos.x, y = m.pos.y, z = m.pos.z}
         end
         local replayCurrPos = replay[math.floor(areaTimer/REPLAY_RATE)]
@@ -232,8 +229,8 @@ local function on_interact(m, o, type, value)
         local starNum = ((o.oBehParams >> 24) & 0xFF) + 1
         if save_star_time(np.currLevelNum, starNum, areaTimer) then
             areaTimerBest = areaTimer
+            save_replay_table(np.currLevelNum, starNum, savedPos)
         end
-        save_replay_table(np.currLevelNum, starNum, savedPos)
         timerColorTarget = {r = 255, g = 255, b = 255}
         areaTimerStop = true
     end
