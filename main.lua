@@ -6,7 +6,8 @@ local modFs = mod_fs_get() or mod_fs_create()
 -- Constants
 local REPLAY_FPS = 3
 local REPLAY_RATE = math.ceil(30/REPLAY_FPS)
-
+local ACT_MAX = 7
+local MARIO_HEIGHT = 160
 
 ---@param str string
 --- Splits a string into a table by spaces
@@ -162,7 +163,7 @@ local forceTimerActs = {
     [ACT_LEDGE_CLIMB_SLOW_2] = true,
 }
 
-local replay = {}
+local replays = {}
 local savedPos = {}
 
 local areaTimer = 0
@@ -177,13 +178,17 @@ local function update()
         if areaTimer%REPLAY_RATE == 0 then
             savedPos[areaTimer/REPLAY_RATE] = {x = m.pos.x, y = m.pos.y, z = m.pos.z}
         end
-        local replayCurrPos = replay[math.floor(areaTimer/REPLAY_RATE)]
-        local replayNextPos = replay[math.floor(areaTimer/REPLAY_RATE) + 1]
-        if replayCurrPos ~= nil then
-            local replayX = math.lerp(replayCurrPos.x, replayNextPos and replayNextPos.x or replayCurrPos.x, (areaTimer%REPLAY_RATE)/REPLAY_RATE)
-            local replayY = math.lerp(replayCurrPos.y, replayNextPos and replayNextPos.y or replayCurrPos.y, (areaTimer%REPLAY_RATE)/REPLAY_RATE)
-            local replayZ = math.lerp(replayCurrPos.z, replayNextPos and replayNextPos.z or replayCurrPos.z, (areaTimer%REPLAY_RATE)/REPLAY_RATE)
-            spawn_non_sync_object(id_bhvSparkleSpawn, E_MODEL_NONE, replayX, replayY, replayZ, nil)
+        for i = 1, ACT_MAX do
+            if replays[i] ~= nil then
+                local replayCurrPos = replays[i][math.floor(areaTimer/REPLAY_RATE)]
+                if replayCurrPos ~= nil then
+                    local replayNextPos = replays[i][math.floor(areaTimer/REPLAY_RATE) + 1] or replayCurrPos
+                    local replayX = math.lerp(replayCurrPos.x, replayNextPos.x, (areaTimer%REPLAY_RATE)/REPLAY_RATE)
+                    local replayY = math.lerp(replayCurrPos.y, replayNextPos.y, (areaTimer%REPLAY_RATE)/REPLAY_RATE)
+                    local replayZ = math.lerp(replayCurrPos.z, replayNextPos.z, (areaTimer%REPLAY_RATE)/REPLAY_RATE)
+                    spawn_non_sync_object(id_bhvSparkleSpawn, E_MODEL_NONE, replayX, replayY + MARIO_HEIGHT, replayZ, nil)
+                end
+            end
         end
         areaTimer = areaTimer + 1
     end
@@ -238,11 +243,17 @@ end
 
 local function level_init()
     local np = gNetworkPlayers[0]
-    if np.currCourseNum == 0 then return end 
+    if np.currCourseNum == 0 then return end
     areaTimer = 0
     areaTimerStop = false
     areaTimerBest = load_star_time(np.currLevelNum, np.currActNum ~= 0 and np.currActNum or 1)
-    replay = load_replay_table(np.currLevelNum, np.currActNum ~= 0 and np.currActNum or 1)
+    savedPos = {}
+    replays = {}
+    for i = 1, ACT_MAX do
+        if np.currActNum == 0 or np.currActNum == i then
+            replays[i] = load_replay_table(np.currLevelNum, i)
+        end
+    end
 end
 
 hook_event(HOOK_UPDATE, update)
