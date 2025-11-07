@@ -4,10 +4,10 @@
 local modFs = mod_fs_get() or mod_fs_create()
 
 -- Constants
-local REPLAY_FPS = 3
-local REPLAY_RATE = math.ceil(30/REPLAY_FPS)
-local ACT_MAX = 7
-local MARIO_HEIGHT = 160
+REPLAY_FPS = 3
+REPLAY_RATE = math.ceil(30/REPLAY_FPS)
+ACT_MAX = 7
+MARIO_HEIGHT = 160
 
 ---@param str string
 --- Splits a string into a table by spaces
@@ -107,7 +107,8 @@ end
 
 local function load_replay_table(level, star)
     local filename = "replay-"..tostring(romhack).."-"..tostring(level).."-"..tostring(star)
-    local file = modFs:get_file(filename) or modFs:create_file(filename, true)
+    local file = modFs:get_file(filename)
+    if file == nil then return end
     file:rewind() -- Reset offset to the beginning of the file
     
     local replayString = string_split(file:read_string(), ",")
@@ -163,10 +164,9 @@ local forceTimerActs = {
     [ACT_LEDGE_CLIMB_SLOW_2] = true,
 }
 
-local replays = {}
 local savedPos = {}
 
-local areaTimer = 0
+areaTimer = 0
 local areaTimerStop = true
 local areaTimerBest = 0
 local function update()
@@ -177,18 +177,6 @@ local function update()
     and (m.area.camera == nil or m.area.camera.cutscene == 0) then
         if areaTimer%REPLAY_RATE == 0 then
             savedPos[areaTimer/REPLAY_RATE] = {x = m.pos.x, y = m.pos.y, z = m.pos.z}
-        end
-        for i = 1, ACT_MAX do
-            if replays[i] ~= nil then
-                local replayCurrPos = replays[i][math.floor(areaTimer/REPLAY_RATE)]
-                if replayCurrPos ~= nil then
-                    local replayNextPos = replays[i][math.floor(areaTimer/REPLAY_RATE) + 1] or replayCurrPos
-                    local replayX = math.lerp(replayCurrPos.x, replayNextPos.x, (areaTimer%REPLAY_RATE)/REPLAY_RATE)
-                    local replayY = math.lerp(replayCurrPos.y, replayNextPos.y, (areaTimer%REPLAY_RATE)/REPLAY_RATE)
-                    local replayZ = math.lerp(replayCurrPos.z, replayNextPos.z, (areaTimer%REPLAY_RATE)/REPLAY_RATE)
-                    spawn_non_sync_object(id_bhvSparkleSpawn, E_MODEL_NONE, replayX, replayY + MARIO_HEIGHT, replayZ, nil)
-                end
-            end
         end
         areaTimer = areaTimer + 1
     end
@@ -232,6 +220,7 @@ local function on_interact(m, o, type, value)
     if m.playerIndex ~= 0 and np.currCourseNum ~= 0 then return end
     if type == INTERACT_STAR_OR_KEY then
         local starNum = ((o.oBehParams >> 24) & 0xFF) + 1
+        table.insert(savedPos, {x = o.oPosX, y = o.oPosY, z = o.oPosZ})
         if save_star_time(np.currLevelNum, starNum, areaTimer) then
             areaTimerBest = areaTimer
             save_replay_table(np.currLevelNum, starNum, savedPos)
@@ -248,10 +237,16 @@ local function level_init()
     areaTimerStop = false
     areaTimerBest = load_star_time(np.currLevelNum, np.currActNum ~= 0 and np.currActNum or 1)
     savedPos = {}
-    replays = {}
     for i = 1, ACT_MAX do
+        if replayBoos[i] == nil then replayBoos[i] = {} end
+        replayBoos[i].replay = {}
         if np.currActNum == 0 or np.currActNum == i then
-            replays[i] = load_replay_table(np.currLevelNum, i)
+            replayBoos[i].replay = load_replay_table(np.currLevelNum, i)
+            if replayBoos[i].replay ~= nil then
+                spawn_non_sync_object(id_bhvReplayBoo, E_MODEL_REPLAY_BOO, 0, 0, 0, function (obj)
+                    obj.oAnimState = i
+                end)
+            end
         end
     end
 end

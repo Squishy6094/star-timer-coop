@@ -1,0 +1,15 @@
+extern const GeoLayout replay_boo_geo[];
+extern Lights1 replay_boo_boo_color_lights;
+extern Lights1 replay_boo_boo_face_lights;
+extern u8 replay_boo_boo_face_sad_ia8[];
+extern Vtx replay_boo_replay_boo_mesh_layer_1_vtx_cull[8];
+extern Vtx replay_boo_replay_boo_mesh_layer_1_vtx_0[49];
+extern Gfx replay_boo_replay_boo_mesh_layer_1_tri_0[];
+extern Vtx replay_boo_replay_boo_mesh_layer_1_vtx_1[9];
+extern Gfx replay_boo_replay_boo_mesh_layer_1_tri_1[];
+extern Gfx mat_replay_boo_boo_color[];
+extern Gfx mat_revert_replay_boo_boo_color[];
+extern Gfx mat_replay_boo_boo_face[];
+extern Gfx mat_revert_replay_boo_boo_face[];
+extern Gfx replay_boo_replay_boo_mesh_layer_1[];
+extern Gfx replay_boo_material_revert_render_settings[];
