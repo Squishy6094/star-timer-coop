@@ -9,6 +9,11 @@ REPLAY_RATE = math.ceil(30/REPLAY_FPS)
 ACT_MAX = 7
 MARIO_HEIGHT = 160
 
+SAVE_VAR_NAME = "name"
+SAVE_VAR_COOPID = "coopid"
+SAVE_VAR_FRAMES = "frames"
+SAVE_VAR_REPLAY = "replay"
+
 ---@param str string
 --- Splits a string into a table by spaces
 function string_split(str, splitAt)
@@ -85,33 +90,51 @@ local function timestamp(frames)
     return hours > 0 and string.format("%d:%02d:%02d.%03d", hours, minutes, seconds, milliseconds) or (minutes > 0 and string.format("%d:%02d.%03d", minutes, seconds, milliseconds) or string.format("%01d.%03d", seconds, milliseconds))
 end
 
-local function save_replay_table(level, star, table)
-    local replayString = ""
-    local prevPos = {x = 0, y = 0, z = 0}
-    for i = 0, #table do
-        replayString = replayString..tostring(math.floor(table[i].x - prevPos.x)).." "..tostring(math.floor(table[i].y - prevPos.y)).." "..tostring(math.floor(table[i].z - prevPos.z)) .. ","
-        vec3f_copy(prevPos, table[i])
-    end
-
-    -- Save Replay
-    local filename = "replay-"..tostring(romhack).."-"..tostring(level).."-"..tostring(star)
-    local file = modFs:get_file(filename) or modFs:create_file(filename, true)
-    file:erase(file.size)
-    file:set_text_mode(true) -- Set mode to text
-    file:rewind() -- Reset offset to the beginning of the file
-    file:write_string(replayString)
-    modFs:save()
-    djui_chat_message_create("Saved to \\#00ffff\\star-timer.modfs/"..filename)
-    return replayString
-end
-
-local function load_replay_table(level, star)
+local function load_star_replay(level, star)
+    local replayData = {
+        name = "Replay",
+        id = "-1",
+        frames = 0,
+        replayString = "",
+        replay = {},
+    }
     local filename = "replay-"..tostring(romhack).."-"..tostring(level).."-"..tostring(star)
     local file = modFs:get_file(filename)
-    if file == nil then return end
+    if file == nil then
+        return replayData
+    end
     file:rewind() -- Reset offset to the beginning of the file
+
+    repeat
+        local currLine = file:read_line()
+        local lineSplit = string_split(currLine, "|")
+        if lineSplit ~= nil then
+            local linePrefix = lineSplit[1]
+            local lineContent = ""
+            for i = 2, #lineSplit do
+                if lineSplit[i] ~= nil then
+                    lineContent = lineContent..lineSplit[i]
+                end
+            end
+
+            if linePrefix == SAVE_VAR_NAME then
+                replayData.name = lineContent
+            end
+            if linePrefix == SAVE_VAR_COOPID then
+                replayData.id = lineContent
+            end
+            if linePrefix == SAVE_VAR_FRAMES then
+                replayData.frames = tonumber(lineContent)
+            end
+            if linePrefix == SAVE_VAR_REPLAY then
+                replayData.dataString = lineContent
+            end
+            log_to_console(currLine)
+        end
+        -- Read next line
+    until file:is_eof()
     
-    local replayString = string_split(file:read_string(), ",")
+    local replayString = string_split(replayData.dataString, ",")
     if replayString == nil then return {} end
     local replayTable = {}
     local prevPos = {x = 0, y = 0, z = 0}
@@ -122,12 +145,51 @@ local function load_replay_table(level, star)
             vec3f_copy(prevPos, replayTable[i - 1])
         end
     end
-    file:erase(file.size)
+    replayData.data = replayTable
+
     file:set_text_mode(true) -- Set mode to text
     file:rewind() -- Reset offset to the beginning of the file
+    return replayData
+end
 
-    modFs:save()
-    return replayTable
+local function save_star_replay(level, star, frames, table)
+    local best = load_star_replay(level, star).frames
+    local isPB = best == 0 or best > frames
+    local np = gNetworkPlayers[0]
+
+    -- Save Replay
+    if isPB then
+        local filename = "replay-"..tostring(romhack).."-"..tostring(level).."-"..tostring(star)
+        local savePathMsg = "\\#00ffff\\star-timer.modfs/"..filename
+        local file = modFs:get_file(filename) or modFs:create_file(filename, false)
+        file:erase(file.size)
+        file:set_text_mode(true) -- Set mode to text
+        file:rewind() -- Reset offset to the beginning of the file
+
+        file:write_line(SAVE_VAR_NAME.."|"..np.name)
+        
+        file:write_line(SAVE_VAR_COOPID.."|"..get_coopnet_id(0))
+
+        file:write_line(SAVE_VAR_FRAMES.."|"..tostring(frames))
+        
+        local replayString = ""
+        local prevPos = {x = 0, y = 0, z = 0}
+        for i = 0, #table do
+            replayString = replayString..tostring(math.floor(table[i].x - prevPos.x)).." "..tostring(math.floor(table[i].y - prevPos.y)).." "..tostring(math.floor(table[i].z - prevPos.z)) .. ","
+            vec3f_copy(prevPos, table[i])
+        end
+        file:write_line(SAVE_VAR_REPLAY.."|"..replayString)
+        
+        modFs:save()
+        if best > frames then
+            djui_chat_message_create("New Personal Best!"
+            .. "\n\\#ff0000\\" .. timestamp(best) .. "\\#ffffff\\ -> \\#00ff00\\" .. timestamp(frames) .. "\\#ffffff\\ | \\#00ffff\\-" .. timestamp(best - frames)
+            .." \n\\#ffffff\\Saved to ".. savePathMsg)
+        else
+            djui_chat_message_create("\\#ffffff\\New Time Saved to " .. savePathMsg)
+        end
+    end
+    return isPB
 end
 
 local function load_star_time(level, star)
@@ -221,9 +283,8 @@ local function on_interact(m, o, type, value)
     if type == INTERACT_STAR_OR_KEY then
         local starNum = ((o.oBehParams >> 24) & 0xFF) + 1
         table.insert(savedPos, {x = o.oPosX, y = o.oPosY, z = o.oPosZ})
-        if save_star_time(np.currLevelNum, starNum, areaTimer) then
+        if save_star_replay(np.currLevelNum, starNum, areaTimer, savedPos) then
             areaTimerBest = areaTimer
-            save_replay_table(np.currLevelNum, starNum, savedPos)
         end
         timerColorTarget = {r = 255, g = 255, b = 255}
         areaTimerStop = true
@@ -235,13 +296,13 @@ local function level_init()
     if np.currCourseNum == 0 then return end
     areaTimer = 0
     areaTimerStop = false
-    areaTimerBest = load_star_time(np.currLevelNum, np.currActNum ~= 0 and np.currActNum or 1)
+    areaTimerBest = load_star_replay(np.currLevelNum, np.currActNum ~= 0 and np.currActNum or 1).frames
     savedPos = {}
     for i = 1, ACT_MAX do
         if replayBoos[i] == nil then replayBoos[i] = {} end
         replayBoos[i].replay = {}
         if np.currActNum == 0 or np.currActNum == i then
-            replayBoos[i].replay = load_replay_table(np.currLevelNum, i)
+            replayBoos[i].replay = load_star_replay(np.currLevelNum, i)
             if replayBoos[i].replay ~= nil then
                 spawn_non_sync_object(id_bhvReplayBoo, E_MODEL_REPLAY_BOO, 0, 0, 0, function (obj)
                     obj.oAnimState = i

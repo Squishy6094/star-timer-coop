@@ -21,15 +21,20 @@ local function bhv_replay_boo_init(obj)
     obj.oFlags = OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE
     obj.oAction = REPLAY_BOO_ACT_RACE
     obj_set_model_extended(obj, E_MODEL_REPLAY_BOO)
-
-    replayBoos[obj.oAnimState] = {
-        replay = replayBoos[obj.oAnimState].replay or {},
-        pos = {x = 0, y = 0, z = 0},
-        lastPos = {x = 0, y = 0, z = 0},
-        opacity = 1,
-        obj = obj,
-        light = le_add_light(obj.oPosX, obj.oPosY, obj.oPosZ, 220, 255, 220, 300, 255)
-    }
+    
+    if replayBoos[obj.oAnimState].replay.frames > 0 then
+        replayBoos[obj.oAnimState] = {
+            name = replayBoos[obj.oAnimState].replay.name,
+            replay = replayBoos[obj.oAnimState].replay.data or {},
+            pos = {x = 0, y = 0, z = 0},
+            lastPos = {x = 0, y = 0, z = 0},
+            opacity = 1,
+            obj = obj,
+            light = 0--le_add_light(obj.oPosX, obj.oPosY, obj.oPosZ, 220, 255, 220, 300, 255)
+        }
+    else
+        obj_mark_for_deletion(obj)
+    end
 end
 
 ---@param obj Object
@@ -86,7 +91,7 @@ local function bhv_replay_boo_loop(obj)
         vec3f_copy(booData.lastPos, booData.pos)
     end
 
-    le_set_light_pos(booData.light, obj.oPosX, obj.oPosY, obj.oPosZ)
+    --le_set_light_pos(booData.light, obj.oPosX, obj.oPosY, obj.oPosZ)
 end
 
 id_bhvReplayBoo = hook_behavior(nil, OBJ_LIST_DEFAULT, true, bhv_replay_boo_init, bhv_replay_boo_loop, "bhvReplayBoo")
